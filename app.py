@@ -1,5 +1,6 @@
 import os
 from flask import Flask, render_template, request, send_file
+import pandas as pd
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -20,12 +21,17 @@ def process_files():
     reference_file.save(ref_path)
     target_file.save(target_path)
 
-    # Placeholder for processing logic
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'output.xlsx')
+    # Load Excel files
+    reference_df = pd.read_excel(ref_path)
+    target_df = pd.read_excel(target_path)
 
-    # Simulate creating an output file
-    with open(output_path, 'w') as f:
-        f.write('Output file content')
+    # Perform your processing
+    reference_lookup = dict(zip(reference_df["Donnée du modèle"], reference_df["Xpath"]))
+    target_df["Xpath"] = target_df["Donnée du modèle"].apply(lambda x: reference_lookup.get(x, "Not Found"))
+
+    # Save output file
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'output.xlsx')
+    target_df.to_excel(output_path, index=False)
 
     return send_file(output_path, as_attachment=True)
 
