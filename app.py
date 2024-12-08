@@ -1,6 +1,7 @@
 import os
 from flask import Flask, render_template, request, send_file
 import pandas as pd
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -12,28 +13,43 @@ def home():
 
 @app.route('/process', methods=['POST'])
 def process_files():
+    if 'reference' not in request.files or 'target' not in request.files:
+        return "Missing files. Please upload both files."
+
     reference_file = request.files['reference']
     target_file = request.files['target']
 
-    # Save uploaded files
-    ref_path = os.path.join(app.config['UPLOAD_FOLDER'], reference_file.filename)
-    target_path = os.path.join(app.config['UPLOAD_FOLDER'], target_file.filename)
+    if reference_file.filename == '' or target_file.filename == '':
+        return "No file selected."
+
+    ref_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(reference_file.filename))
+    tgt_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(target_file.filename))
+
     reference_file.save(ref_path)
-    target_file.save(target_path)
+    target_file.save(tgt_path)
 
-    # Load Excel files
-    reference_df = pd.read_excel(ref_path)
-    target_df = pd.read_excel(target_path)
+    try:
+        # Read Excel files
+        reference_df = pd.read_excel(ref_path)
+        target_df = pd.read_excel(tgt_path)
 
-    # Perform your processing
-    reference_lookup = dict(zip(reference_df["Donnée du modèle"], reference_df["Xpath"]))
-    target_df["Xpath"] = target_df["Donnée du modèle"].apply(lambda x: reference_lookup.get(x, "Not Found"))
+        # Create lookup dictionary
+        reference_lookup = dict(zip(reference_df["Donnée du modèle"], reference_df["Xpath"]))
 
-    # Save output file
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'output.xlsx')
-    target_df.to_excel(output_path, index=False)
+        # Map the Xpath
+        target_df["Xpath"] = target_df["Donnée du modèle"].map(reference_lookup).fillna("Not Found")
 
-    return send_file(output_path, as_attachment=True)
+        # Name the output file based on the target file name
+        output_filename = os.path.splitext(target_file.filename)[0] + "_output.xlsx"
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+
+        # Save the output
+        target_df.to_excel(output_path, index=False)
+
+        return send_file(output_path, as_attachment=True)
+
+    except Exception as e:
+        return f"Error processing files: {e}"
 
 if __name__ == '__main__':
     app.run(debug=True)
